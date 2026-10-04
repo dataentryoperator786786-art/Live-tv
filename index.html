@@ -11,11 +11,12 @@
 <div class="wrap"><video id="video" controls playsinline></video><p id="pMsg" class="mut"></p>
 <div class="grid" style="margin-top:10px"><input id="q" placeholder="🔍 Search channel..." oninput="render()"><select id="cat" onchange="render()"></select></div><div class="chs" id="list"></div></div></div>
 <script type="module">
-import {firebaseConfig,EMAIL_DOMAIN} from './firebase-config.js';
+import * as C from './firebase-config.js';
+const {firebaseConfig,EMAIL_DOMAIN}=C, PROXY=C.PROXY_URL||'';
 import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
 import {getFirestore,collection,doc,getDoc,getDocs} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
-const app=initializeApp(firebaseConfig),auth=getAuth(app),fs=getFirestore(app);
+const app=initializeApp(firebaseConfig,'viewer'),auth=getAuth(app),fs=getFirestore(app);
 const $=id=>document.getElementById(id);let chans=[],hls=null;
 const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 window.doLogin=async()=>{const u=$('lu').value.trim().toLowerCase();try{await signInWithEmailAndPassword(auth,`${u}@${EMAIL_DOMAIN}`,$('lp').value)}catch(e){$('lmsg').textContent='Username ya password ghalat hai'}};
@@ -31,9 +32,9 @@ onAuthStateChanged(auth,async u=>{if(!u){$('login').classList.remove('hide');$('
  catch(e){$('lmsg').textContent='Access nahi mila';signOut(auth)}});
 window.render=()=>{const q=$('q').value.toLowerCase(),c=$('cat').value;
  $('list').innerHTML=chans.filter(x=>(!c||x.category===c)&&(!q||x.name.toLowerCase().includes(q))).slice(0,400).map(x=>`<div class="ch" data-id="${x.id}" onclick="play('${x.id}')">${x.logo?`<img src="${esc(x.logo)}" loading="lazy" onerror="this.style.visibility='hidden'">`:'<div style="font-size:32px">📺</div>'}${esc(x.name)}</div>`).join('')||'<p class="mut">Koi channel nahi</p>'};
-window.play=id=>{const x=chans.find(a=>a.id===id),v=$('video');$('pMsg').textContent='';if(hls){hls.destroy();hls=null}
+window.play=id=>{const x=chans.find(a=>a.id===id),v=$('video');let src=x.url;if(PROXY&&/^http:\/\//i.test(src))src=PROXY+'?u='+encodeURIComponent(src);$('pMsg').textContent='';if(hls){hls.destroy();hls=null}
  document.querySelectorAll('.ch').forEach(e=>e.classList.toggle('on',e.dataset.id===id));
- if(window.Hls&&Hls.isSupported()){hls=new Hls();hls.loadSource(x.url);hls.attachMedia(v);hls.on(Hls.Events.MANIFEST_PARSED,()=>v.play().catch(()=>{}));
+ if(window.Hls&&Hls.isSupported()){hls=new Hls();hls.loadSource(src);hls.attachMedia(v);hls.on(Hls.Events.MANIFEST_PARSED,()=>v.play().catch(()=>{}));
   hls.on(Hls.Events.ERROR,(e,d)=>{if(d.fatal){$('pMsg').textContent='Stream nahi chal rahi: '+d.details;hls.destroy();hls=null}})}
- else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=x.url;v.play().catch(()=>{})}};
+ else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=src;v.play().catch(()=>{})}};
 </script></body></html>
