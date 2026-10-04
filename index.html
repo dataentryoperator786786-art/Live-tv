@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Live TV</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.15/dist/hls.min.js"></script>
+<link rel="stylesheet" href="style.css"></head><body>
+<div id="login" class="login card"><h1>📺 Live TV</h1><p class="mut" id="lmsg">Apna username aur password dalein</p>
+<input id="lu" placeholder="Username" autocapitalize="none"><br><br><input id="lp" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()"><br><br>
+<button class="b" style="width:100%" onclick="doLogin()">Login</button></div>
+<div id="app" class="hide"><header><h1>📺 Live TV</h1><div><span class="mut" id="who"></span> <button class="b g" onclick="doLogout()">Logout</button></div></header>
+<div class="wrap"><video id="video" controls playsinline></video><p id="pMsg" class="mut"></p>
+<div class="grid" style="margin-top:10px"><input id="q" placeholder="🔍 Search channel..." oninput="render()"><select id="cat" onchange="render()"></select></div><div class="chs" id="list"></div></div></div>
+<script type="module">
+import {firebaseConfig,EMAIL_DOMAIN} from './firebase-config.js';
+import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import {getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import {getFirestore,collection,doc,getDoc,getDocs} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+const app=initializeApp(firebaseConfig),auth=getAuth(app),fs=getFirestore(app);
+const $=id=>document.getElementById(id);let chans=[],hls=null;
+const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+window.doLogin=async()=>{const u=$('lu').value.trim().toLowerCase();try{await signInWithEmailAndPassword(auth,`${u}@${EMAIL_DOMAIN}`,$('lp').value)}catch(e){$('lmsg').textContent='Username ya password ghalat hai'}};
+window.doLogout=()=>signOut(auth);
+onAuthStateChanged(auth,async u=>{if(!u){$('login').classList.remove('hide');$('app').classList.add('hide');if(hls){hls.destroy();hls=null}return}
+ try{const d=await getDoc(doc(fs,'users',u.uid));if(!d.exists())throw 'x';const x=d.data(),end=x.expiry.toDate();
+  if(x.status!=='active'){$('lmsg').textContent='Aap ka account block hai';return signOut(auth)}
+  if(end<new Date()){$('lmsg').textContent='Aap ki subscription khatam ho chuki hai';return signOut(auth)}
+  $('who').textContent=`${x.username} · ${end.toISOString().slice(0,10)} tak `;
+  const s=await getDocs(collection(fs,'channels'));chans=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.name.localeCompare(b.name));
+  $('cat').innerHTML='<option value="">All categories</option>'+[...new Set(chans.map(c=>c.category))].sort().map(c=>`<option>${esc(c)}</option>`).join('');
+  $('login').classList.add('hide');$('app').classList.remove('hide');render()}
+ catch(e){$('lmsg').textContent='Access nahi mila';signOut(auth)}});
+window.render=()=>{const q=$('q').value.toLowerCase(),c=$('cat').value;
+ $('list').innerHTML=chans.filter(x=>(!c||x.category===c)&&(!q||x.name.toLowerCase().includes(q))).slice(0,400).map(x=>`<div class="ch" data-id="${x.id}" onclick="play('${x.id}')">${x.logo?`<img src="${esc(x.logo)}" loading="lazy" onerror="this.style.visibility='hidden'">`:'<div style="font-size:32px">📺</div>'}${esc(x.name)}</div>`).join('')||'<p class="mut">Koi channel nahi</p>'};
+window.play=id=>{const x=chans.find(a=>a.id===id),v=$('video');$('pMsg').textContent='';if(hls){hls.destroy();hls=null}
+ document.querySelectorAll('.ch').forEach(e=>e.classList.toggle('on',e.dataset.id===id));
+ if(window.Hls&&Hls.isSupported()){hls=new Hls();hls.loadSource(x.url);hls.attachMedia(v);hls.on(Hls.Events.MANIFEST_PARSED,()=>v.play().catch(()=>{}));
+  hls.on(Hls.Events.ERROR,(e,d)=>{if(d.fatal){$('pMsg').textContent='Stream nahi chal rahi: '+d.details;hls.destroy();hls=null}})}
+ else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=x.url;v.play().catch(()=>{})}};
+</script></body></html>

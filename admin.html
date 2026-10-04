@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Live TV Admin</title><meta name="robots" content="noindex">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css"></head><body>
+<div id="login" class="login card"><h1>📺 Admin</h1><p class="mut" id="lmsg">Admin email aur password</p>
+<input id="le" type="email" placeholder="Email"><br><br><input id="lp" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')doLogin()"><br><br>
+<button class="b" style="width:100%" onclick="doLogin()">Login</button></div>
+<div id="app" class="hide">
+<header><h1>📺 Live TV Admin</h1><button class="b g" onclick="doLogout()">Logout</button></header>
+<nav id="nav"><button data-t="dash" class="on">Dashboard</button><button data-t="chan">Channels</button><button data-t="usr">Users</button></nav>
+<div class="wrap">
+<div class="t on" id="dash"><div class="stats"><div class="stat"><b id="sCh">0</b><span>Channels</span></div><div class="stat"><b id="sUs">0</b><span>Users</span></div><div class="stat"><b id="sAct">0</b><span>Active users</span></div></div>
+<div class="card" style="margin-top:16px"><h3>Import M3U</h3><p class="mut">Sirf apni authorized playlist. File choose karein (URL sirf CORS allow hone par chalta hai).</p>
+<div class="grid"><input id="m3uUrl" placeholder="M3U URL (optional)"><button class="b" onclick="impUrl()">Import URL</button>
+<label class="b g" style="display:flex;align-items:center;justify-content:center;border-radius:9px;cursor:pointer">Choose M3U File<input id="m3uFile" type="file" accept=".m3u,.m3u8,.txt" class="hide"></label></div><p id="impMsg" class="mut"></p></div></div>
+<div class="t" id="chan"><div class="card"><h3 id="cTitle">Add Channel</h3><div class="grid"><input id="cName" placeholder="Channel name"><input id="cCat" placeholder="Category" list="catList"><input id="cLogo" placeholder="Logo URL"><input id="cUrl" placeholder="M3U8 URL"></div>
+<datalist id="catList"></datalist><input type="hidden" id="cId"><div class="row"><button class="b" onclick="saveCh()">Save</button><button class="b g" onclick="clrCh()">Clear</button></div></div>
+<div class="card"><input id="q" placeholder="🔍 Search..." oninput="renderCh()"><div class="row"><button class="b d" onclick="delSel()">Delete selected</button><button class="b" onclick="exportM3U()">Export M3U</button></div>
+<table style="margin-top:10px"><thead><tr><th><input type="checkbox" style="width:auto" onchange="selAll(this.checked)"></th><th>Channel</th><th class="hm">Category</th><th></th></tr></thead><tbody id="chRows"></tbody></table><p class="mut" id="chCount"></p></div></div>
+<div class="t" id="usr"><div class="card"><h3 id="uTitle">Add User</h3><div class="grid"><input id="uN" placeholder="Username (a-z, 0-9)"><input id="uP" placeholder="Password (min 6)"><input id="uE" type="date"><select id="uS"><option value="active">Active</option><option value="blocked">Blocked</option></select></div>
+<input type="hidden" id="uId"><div class="row"><button class="b" onclick="saveUs()">Save User</button><button class="b g" onclick="clrUs()">Clear</button><button class="b g" onclick="addDays(30)">+30 days</button><button class="b g" onclick="addDays(90)">+90 days</button></div>
+<p class="mut">Edit karte waqt password khali chorein to purana rahega. User delete karne se access band ho jata hai.</p></div>
+<div class="card"><table><thead><tr><th>User</th><th>Expiry</th><th>Status</th><th></th></tr></thead><tbody id="usRows"></tbody></table></div></div>
+</div></div>
+<script type="module">
+import {firebaseConfig,EMAIL_DOMAIN} from './firebase-config.js';
+import {initializeApp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import {getAuth,signInWithEmailAndPassword,signOut,onAuthStateChanged,createUserWithEmailAndPassword} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import {getFirestore,collection,doc,getDoc,setDoc,updateDoc,deleteDoc,onSnapshot,writeBatch,Timestamp} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+const app=initializeApp(firebaseConfig),auth=getAuth(app),fs=getFirestore(app);
+const app2=initializeApp(firebaseConfig,'creator'),auth2=getAuth(app2); // naya user banane ke liye (admin logout na ho)
+const $=id=>document.getElementById(id);let chans=[],users=[],sel=new Set(),unsub=[];
+const esc=s=>String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+window.doLogin=async()=>{try{await signInWithEmailAndPassword(auth,$('le').value.trim(),$('lp').value)}catch(e){$('lmsg').textContent='Login fail: '+e.code}};
+window.doLogout=()=>signOut(auth);
+onAuthStateChanged(auth,async u=>{unsub.forEach(f=>f());unsub=[];
+ if(!u){$('login').classList.remove('hide');$('app').classList.add('hide');return}
+ let ok=false;try{ok=(await getDoc(doc(fs,'admins',u.uid))).exists()}catch(e){}
+ if(!ok){$('lmsg').textContent='Yeh account admin nahi hai';signOut(auth);return}
+ $('login').classList.add('hide');$('app').classList.remove('hide');
+ unsub.push(onSnapshot(collection(fs,'channels'),s=>{chans=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>a.name.localeCompare(b.name));renderCh()}));
+ unsub.push(onSnapshot(collection(fs,'users'),s=>{users=s.docs.map(d=>({id:d.id,...d.data()}));renderUs()}));});
+$('nav').onclick=e=>{const t=e.target.dataset.t;if(!t)return;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b===e.target));document.querySelectorAll('.t').forEach(x=>x.classList.toggle('on',x.id===t))};
+const exp=x=>x.expiry&&x.expiry.toDate?x.expiry.toDate():new Date(0);
+const ymd=d=>d.toISOString().slice(0,10);
+function renderCh(){const q=$('q').value.toLowerCase(),f=chans.filter(x=>!q||x.name.toLowerCase().includes(q));
+ $('sCh').textContent=chans.length;$('catList').innerHTML=[...new Set(chans.map(x=>x.category))].map(c=>`<option value="${esc(c)}">`).join('');
+ $('chCount').textContent=`${f.length} of ${chans.length}`;
+ $('chRows').innerHTML=f.slice(0,500).map(x=>`<tr><td><input type="checkbox" style="width:auto" ${sel.has(x.id)?'checked':''} onchange="tog('${x.id}',this.checked)"></td><td>${x.logo?`<img class="logo" src="${esc(x.logo)}" loading="lazy" onerror="this.style.visibility='hidden'">`:''}${esc(x.name)}</td><td class="hm">${esc(x.category)}</td><td><div class="row" style="margin:0"><button class="b g" onclick="editCh('${x.id}')">Edit</button><button class="b d" onclick="delCh('${x.id}')">✕</button></div></td></tr>`).join('')||'<tr><td colspan="4" class="mut">Koi channel nahi</td></tr>'}
+function st(x){if(x.status==='blocked')return['Blocked','bad'];const d=(exp(x)-new Date())/864e5;return d<0?['Expired','bad']:d<=7?['Expiring','warn']:['Active','ok']}
+function renderUs(){$('sUs').textContent=users.length;$('sAct').textContent=users.filter(x=>st(x)[0]!=='Blocked'&&st(x)[0]!=='Expired').length;
+ $('usRows').innerHTML=users.map(x=>{const[s,c]=st(x);return`<tr><td>${esc(x.username)}</td><td>${ymd(exp(x))}</td><td><span class="tag ${c}">${s}</span></td><td><div class="row" style="margin:0"><button class="b g" onclick="editUs('${x.id}')">Edit</button><button class="b d" onclick="delUs('${x.id}')">✕</button></div></td></tr>`}).join('')||'<tr><td colspan="4" class="mut">Koi user nahi</td></tr>'}
+window.tog=(id,v)=>v?sel.add(id):sel.delete(id);window.selAll=v=>{chans.forEach(x=>v?sel.add(x.id):sel.delete(x.id));renderCh()};
+window.clrCh=()=>{['cName','cCat','cLogo','cUrl','cId'].forEach(i=>$(i).value='');$('cTitle').textContent='Add Channel'};
+window.saveCh=async()=>{const n=$('cName').value.trim(),u=$('cUrl').value.trim();if(!n||!u)return alert('Name aur URL zaroori');
+ const o={name:n,category:$('cCat').value.trim()||'General',logo:$('cLogo').value.trim(),url:u},id=$('cId').value;
+ try{id?await updateDoc(doc(fs,'channels',id),o):await setDoc(doc(collection(fs,'channels')),o);clrCh()}catch(e){alert(e.message)}};
+window.editCh=id=>{const x=chans.find(a=>a.id===id);$('cName').value=x.name;$('cCat').value=x.category;$('cLogo').value=x.logo||'';$('cUrl').value=x.url;$('cId').value=id;$('cTitle').textContent='Edit Channel';scrollTo(0,0)};
+window.delCh=async id=>{if(confirm('Delete?'))await deleteDoc(doc(fs,'channels',id))};
+window.delSel=async()=>{if(!sel.size||!confirm(sel.size+' channels delete?'))return;const ids=[...sel];for(let i=0;i<ids.length;i+=400){const b=writeBatch(fs);ids.slice(i,i+400).forEach(id=>b.delete(doc(fs,'channels',id)));await b.commit()}sel.clear()};
+function parseM3U(t){const o=[];let m=null;for(const l0 of t.replace(/\r/g,'').split('\n')){const l=l0.trim();if(!l)continue;if(l.startsWith('#EXTINF')){m=l;continue}
+ if(!l.startsWith('#')&&m){const g=k=>{const r=m.match(new RegExp(k+'="([^"]*)"','i'));return r?r[1]:''};o.push({name:m.slice(m.lastIndexOf(',')+1).trim()||'Channel',category:g('group-title')||'Imported',logo:g('tvg-logo'),url:l});m=null}}return o}
+async function impText(t){const l=parseM3U(t),ex=new Set(chans.map(x=>x.url)),f=l.filter(x=>!ex.has(x.url));
+ if(!l.length){$('impMsg').textContent='Koi channel nahi mila';return}$('impMsg').textContent='Uploading...';
+ try{for(let i=0;i<f.length;i+=400){const b=writeBatch(fs);f.slice(i,i+400).forEach(c=>b.set(doc(collection(fs,'channels')),c));await b.commit()}
+ $('impMsg').textContent=`${f.length} naye channel add hue, ${l.length-f.length} duplicate skip`}catch(e){$('impMsg').textContent='Error: '+e.message}}
+window.impUrl=async()=>{const u=$('m3uUrl').value.trim();if(!u)return;try{const r=await fetch(u);if(!r.ok)throw 0;impText(await r.text())}catch(e){$('impMsg').textContent='URL load nahi hua (CORS). File use karein.'}};
+$('m3uFile').onchange=async function(){if(this.files[0])impText(await this.files[0].text())};
+window.exportM3U=()=>{let o='#EXTM3U\n';chans.forEach(x=>o+=`#EXTINF:-1 group-title="${(x.category||'').replace(/"/g,'')}"${x.logo?` tvg-logo="${x.logo.replace(/"/g,'')}"`:''},${x.name}\n${x.url}\n`);
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([o],{type:'audio/x-mpegurl'}));a.download='channels.m3u';a.click()};
+window.clrUs=()=>{['uN','uP','uE','uId'].forEach(i=>$(i).value='');$('uS').value='active';$('uN').disabled=false;$('uTitle').textContent='Add User'};
+window.addDays=d=>{const b=$('uE').value&&new Date($('uE').value)>new Date()?new Date($('uE').value):new Date();b.setDate(b.getDate()+d);$('uE').value=ymd(b)};
+window.editUs=id=>{const x=users.find(a=>a.id===id);$('uN').value=x.username;$('uN').disabled=true;$('uP').value='';$('uE').value=ymd(exp(x));$('uS').value=x.status;$('uId').value=id;$('uTitle').textContent='Edit User';scrollTo(0,0)};
+window.delUs=async id=>{if(confirm('User delete? (access band ho jayega)'))await deleteDoc(doc(fs,'users',id))};
+window.saveUs=async()=>{const n=$('uN').value.trim().toLowerCase(),p=$('uP').value,e=$('uE').value,id=$('uId').value;
+ if(!/^[a-z0-9._-]{3,30}$/.test(n))return alert('Username 3-30 chars: a-z, 0-9, . _ -');if(!e)return alert('Expiry date zaroori');if(!id&&p.length<6)return alert('Password min 6');
+ const expiry=Timestamp.fromDate(new Date(e+'T23:59:59')),status=$('uS').value;
+ try{if(id){await updateDoc(doc(fs,'users',id),{expiry,status});if(p)alert('Password change ke liye user delete karke dobara banayein.')}
+ else{const c=await createUserWithEmailAndPassword(auth2,`${n}@${EMAIL_DOMAIN}`,p);await setDoc(doc(fs,'users',c.user.uid),{username:n,expiry,status});await signOut(auth2)}
+ clrUs()}catch(err){alert(err.code==='auth/email-already-in-use'?'Username pehle se mojood hai':err.message)}};
+</script></body></html>

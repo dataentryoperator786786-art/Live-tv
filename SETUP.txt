@@ -1,0 +1,15 @@
+LIVE TV (Firebase) - SETUP
+
+1) console.firebase.google.com -> Add project (NAYA project, lottery wala nahi) -> naam: livetv-admin
+2) Build -> Authentication -> Get started -> Sign-in method -> Email/Password ENABLE
+3) Build -> Firestore Database -> Create database (production mode)
+   -> Rules tab -> firestore.rules ka poora content paste -> Publish
+4) Project settings (gear) -> Your apps -> </> Web -> register -> firebaseConfig copy
+   -> firebase-config.js mein paste karein
+5) Authentication -> Users -> Add user: apna admin email + password -> UID copy karein
+6) Firestore -> Start collection: admins -> Document ID = woh UID -> field: ok (boolean) = true
+7) Hosting: folder ko Netlify (app.netlify.com/drop) par drag-drop karein
+8) Firebase -> Authentication -> Settings -> Authorized domains -> apna netlify domain add karein
+
+Admin panel:  https://your-site.netlify.app/admin.html
+Users ka page: https://your-site.netlify.app/
